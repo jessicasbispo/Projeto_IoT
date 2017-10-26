@@ -2,7 +2,8 @@
 #define SERVO 9 // Porta Digital 9 PWM
 
 #include <SPI.h>
-#include <Ethernet.h>
+#include <UIPEthernet.h>
+#include <utility/logging.h>
 #include <PubSubClient.h>
 
 const int btnLed = 6;
@@ -44,26 +45,36 @@ void whenMessageReceived(char* topic, byte* payload, unsigned int length) {
   Serial.print("Numero lido: "); Serial.println(msgComoNumero);
   Serial.flush();
 
-  switch (msgComoNumero) {
-    //Abrir na Garagem
-    case 1:
-      abrirPortao();
-      acenderLed();
-      break;
-    //Fechar na Garagem
-    case 2:
-      fecharPortao();
-      apagarLed();
-      break;
-    case 3:
-      acenderLed();
-      break;
-    case 4:
-      apagarLed();
-      break;
-    default:
-      Serial.println("Option not available");
-      break;
+  String topicStr = (topic);
+
+  if (topicStr == "luzComando") {
+    switch (msgComoNumero) {
+      case 1:
+        acenderLed();
+        break;
+      case 0:
+        apagarLed();
+        break;
+      default:
+        Serial.println("Option not available to topic luzComando");
+        break;
+    }
+  }
+
+  if (topicStr == "portaoComando") {
+    switch (msgComoNumero) {
+      case 1:
+        abrirPortao();
+        acenderLed();
+        break;
+      case 0:
+        fecharPortao();
+        apagarLed();
+        break;
+      default:
+        Serial.println("Option not available to topic portaoComando");
+        break;
+    }
   }
 }
 
@@ -92,34 +103,47 @@ void setup() {
   }
 
   // Faz a conexão no cloud com nome do dispositivo, usuário e senha respectivamente
-  if (client.connect("arduino23", "codexpiot", "iot")) {
+  reconnect();
+  /*if (client.connect("arduino23", "codexpiot", "iot")) {
     Serial.println("Connected");
-    // Envia uma mensagem para o cloud no topic portao
-    client.publish("iot", "Funciona!");
-    Serial.println("iot sent");
+    // Envia uma mensagem para o cloud no topic luzComando
+    client.publish("luzComando", "Funciona!");
+    Serial.println("luzComando sent");
 
     // Conecta no topic para receber mensagens
-    client.subscribe("iot");
-    Serial.println("conectado iot");
-  } else {
-    Serial.println("Failed to connect to MQTT server");
-  }
+    client.subscribe("luzComando");
+    Serial.println("conectado luzComando");
 
+    // Envia uma mensagem para o cloud no topic portaoComando
+    client.publish("portaoComando", "Funciona!");
+    Serial.println("portaoComando sent");
+
+    // Conecta no topic para receber mensagens
+    client.subscribe("portaoComando");
+    Serial.println("conectado portaoComando");
+    } else {
+    Serial.println("Failed to connect to MQTT server");
+    }
+  */
 
 }
 
 void loop() {
 
+  if (!client.connected()) {
+    reconnect();
+  }
+
   // A biblioteca PubSubClient precisa que este método seja chamado em cada iteração de `loop()`
   // para manter a conexão MQTT e processar mensagens recebidas (via a função callback)
   client.loop();
 
-  mudarBotaoLed (btnLed);
-  mudarBotaoPortao (btnPortao);
+  mudarBotaoLed(btnLed);
+  mudarBotaoPortao(btnPortao);
 
   //TESTE da posicao do servo motor
-  Serial.print(s.read());
-  Serial.print("\n");
+  //Serial.print(s.read());
+  //Serial.print("\n");
 }
 
 void mudarBotaoLed (int pinLed) {
@@ -129,8 +153,10 @@ void mudarBotaoLed (int pinLed) {
     // Invertemos o estado do LED
     if (ledOn) {
       ledOn = 0;
+      client.publish("luzEstado", "0");
     } else {
       ledOn = 1;
+      client.publish("luzEstado", "1");
     }
     digitalWrite(ledGaragem, ledOn);
   }
@@ -163,6 +189,7 @@ void fecharPortao () {
       delay(10);
     }
   }
+  client.publish("portaoEstado", "0");
 }
 
 void abrirPortao () {
@@ -172,6 +199,7 @@ void abrirPortao () {
       delay(10);
     }
   }
+  client.publish("portaoEstado", "1");
 }
 
 void acenderLed () {
@@ -184,3 +212,34 @@ void apagarLed () {
   delay (500);
 }
 
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("arduino23", "codexpiot", "iot")) {
+      Serial.println("Connected");
+      // Envia uma mensagem para o cloud no topic luzComando
+      client.publish("luzComando", "Funciona!");
+      Serial.println("luzComando sent");
+
+      // Conecta no topic para receber mensagens
+      client.subscribe("luzComando");
+      Serial.println("conectado luzComando");
+
+      // Envia uma mensagem para o cloud no topic portaoComando
+      client.publish("portaoComando", "Funciona!");
+      Serial.println("portaoComando sent");
+
+      // Conecta no topic para receber mensagens
+      client.subscribe("portaoComando");
+      Serial.println("conectado portaoComando");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
